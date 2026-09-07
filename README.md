@@ -1,140 +1,90 @@
 # MO1 — Android APK Analyzer
 
-Parses Android APK structure, analyzes permissions, extracts manifest, lists components, and analyzes intent filters.
+Real APK parser for static mobile security review. Standard-library only.
 
-## Overview
+## What the engine genuinely does
 
-This tool performs static analysis of Android APK files to identify:
-- APK structure and file composition
-- Permission usage and risk categorization
-- AndroidManifest.xml parsing
-- Component enumeration (activities, services, receivers, providers)
-- Intent filter analysis
-- Security observations (debuggable, backup, exported components)
+- **ZIP/APK container parsing** via `zipfile` — validates archive, lists entries,
+  checks `.testzip()` integrity.
+- **Binary XML (AXML) decode, by hand** — parses the RES_XML_TYPE header and the
+  RES_STRING_POOL_TYPE chunk (UTF-16 and UTF-8 string pools, real offset table) to
+  recover `AndroidManifest.xml` strings without any third-party library.
+- **Permission risk categorization** — dangerous / signature / unknown buckets.
+- **Signature presence** — META-INF entries and APK Signature Scheme v2 markers.
+- **Dangerous API grep** over DEX payload bytes — device-ID, SIM harvesting, SMS,
+  shell exec, accessibility abuse, dynamic class loading, C2-style endpoints.
+- **Hardcoded-secret scan** — AWS keys, Google API keys, GitHub tokens, RSA private
+  blocks, generic password/api_key/secret assignments on DEX+manifest content.
+- **Crafted fixture** — `fixtures/sample_vuln.apk` is a real zipfile with a real
+  binary-XML manifest and a `classes.dex` payload studded with in-band markers.
 
-## Features
-
-- **APK Structure Parsing**: List all files and analyze ZIP structure
-- **Permission Analysis**: Categorize permissions by risk level (dangerous, signature, unknown)
-- **Manifest Extraction**: Parse AndroidManifest.xml for app metadata
-- **Component Listing**: Enumerate activities, services, receivers, content providers
-- **Intent Filter Analysis**: Map intent filters to components
-- **Security Observations**: Flag debuggable apps, backup enabled, exported components
-
-## Installation
+## Quick start
 
 ```bash
-# No external dependencies required - uses standard library only
-python3 apk_analyzer.py <apk_file>
-```
-
-## Usage
-
-```bash
-# Analyze an APK file
-python3 apk_analyzer.py app.apk
-
-# Generate and analyze sample APK
+# Offline demo (builds/uses the crafted fixture, writes reports/, exits 0)
 python3 apk_analyzer.py
 
-# Export results to JSON
-python3 apk_analyzer.py app.apk --json
+# Analyze any APK
+python3 apk_analyzer.py path/to/app.apk
+
+# JSON report + custom report dir
+python3 apk_analyzer.py path/to/app.apk --json --report-dir reports
+
+# Rebuild the bundled fixture
+python3 apk_analyzer.py --make-fixture
+
+# Tests
+python3 -m unittest discover -s tests
 ```
 
-## Example Output
+## CLI
 
 ```
-[*] Analyzing: sample.apk
-[*] File size: 12345 bytes
-
-============================================================
-  MO1 — Android APK Analyzer Report
-============================================================
-
-APK: sample.apk
-Size: 12345 bytes
-Files: 15
-
-============================================================
-  APP INFORMATION
-============================================================
-  package             : com.example.testapp
-  label               : TestApp
-  debuggable          : true
-  allow_backup        : true
-
-============================================================
-  PERMISSIONS (10 total)
-============================================================
-
-  [!] DANGEROUS PERMISSIONS (6):
-      - android.permission.CAMERA
-      - android.permission.READ_CONTACTS
-      - android.permission.READ_EXTERNAL_STORAGE
-      - android.permission.RECORD_AUDIO
-      - android.permission.SEND_SMS
-      - android.permission.ACCESS_FINE_LOCATION
-
-============================================================
-  COMPONENTS
-============================================================
-
-  Activities (2):
-    - .MainActivity [EXPORTED]
-    - .SettingsActivity
-
-  Services (1):
-    - .TrackingService [EXPORTED]
-
-  Receivers (1):
-    - .BootReceiver [EXPORTED]
-
-============================================================
-  SECURITY OBSERVATIONS
-============================================================
-  [!] App is DEBUGGABLE - should not be in production
-  [!] Backup allowed - data can be extracted via ADB
-  [!] 6 dangerous permission(s) requested
+python3 apk_analyzer.py [-h] [--json] [--report-dir REPORT_DIR] [--make-fixture] [apk]
 ```
 
-## Legal Disclaimer
+- `apk` — path to an APK. Omitted → offline demo (exit 0).
+- `--json` — write JSON to `reports/<name>.json` (gitignored).
+- `--report-dir` — report output directory (default `reports/`).
+- `--make-fixture` — regenerate the crafted fixture APK and exit.
 
-**IMPORTANT: Read before use.**
+Exit codes: `0` success (incl. demo), `2` usage/input error.
 
-This project is provided for **educational and authorized security testing purposes only**. 
+## Live Lab Test Plan
 
-### Authorization Requirements
-- You MUST have explicit written permission from the network owner before using this tool
-- Unauthorized interception of network communications is illegal under federal and state laws
-- This tool should ONLY be used on networks you own or have written authorization to test
+Prerequisites: an Android emulator or device you own, and the target `.apk` you
+are authorized to analyze (or this repo's fixture as a stand-in).
 
-### Legal Framework
-- **Computer Fraud and Abuse Act (CFAA)**: Unauthorized access to computer systems is a federal crime
-- **Wiretap Act (18 U.S.C. § 2511)**: Interception of electronic communications without consent is illegal
-- **State Laws**: Many states have additional computer crime and wiretapping statutes
-- **GDPR/CCPA**: Data collection may be subject to privacy regulations
+1. **Baseline**: `python3 apk_analyzer.py fixtures/sample_vuln.apk --json`
+   — confirm package, 12 permissions we planted, 9 dangerous, 5 secrets.
+2. **Real target**: obtain a signed, debug, or release APK you have rights to;
+   run the same command. Sanity-check that `package`/`signed` match `aapt dump badging`.
+3. **Cross-check AXML**: decode the same `AndroidManifest.xml` with `apktool` or
+   `aapt2 dump xmltree` and compare the permission list against the tool's output.
+4. **Secrets audit**: diff the hardcoded-secret findings against `strings` /
+   `grep -a` output for the same DEX to confirm recall and check false positives.
+5. **Regression**: re-run `python3 -m unittest discover -s tests` after any change
+   to the decoder.
 
-### Acceptable Use
-- Testing security of your own networks
-- Authorized penetration testing with written scope
-- Academic research in controlled lab environments
-- Security education and training
+## Metrics
 
-### Prohibited Use
-- Intercepting communications on networks you do not own
-- Attacking infrastructure without authorization
-- Any activity that violates applicable laws or regulations
-- Commercial use without proper licensing
+| Metric                                  | Value |
+|-----------------------------------------|-------|
+| Standard-library only                   | Yes   |
+| Third-party deps                        | none  |
+| Deterministic offline tests             | 16    |
+| Fixture APK (real zipfile + AXML)       | `fixtures/sample_vuln.apk` |
+| Offline demo exit                      | 0     |
+| Report output                          | `reports/*.json` (gitignored) |
+| Input formats                           | APK (zipfile), AXML manifest |
 
-### No Warranty
-This software is provided "AS IS" without warranty of any kind. The author is not responsible for any misuse or damage caused by this software.
+## IMPORTANT: Read before use.
 
-### Responsible Disclosure
-If you discover vulnerabilities using this tool, follow responsible disclosure practices:
-1. Report to the vendor/owner privately
-2. Allow reasonable time for remediation
-3. Do not exploit beyond proof of concept
+Educational, authorization-required tooling. See `LICENSE` for the full shield —
+Authorization, CFAA / computer-crime statutes, Acceptable Use, Prohibited Use,
+No Warranty, and Responsible Disclosure. Only analyze APKs you own or are
+explicitly authorized to assess.
 
 ## License
 
-MIT
+MIT — full legal shield in `LICENSE`.
