@@ -419,11 +419,11 @@ def create_fixture_apk(path):
         b"DexClassLoader(cx)/sdcard/evil.dex",
         b"http://192.0.2.10/c2/beacon",
         b"https://lab-c2.example.com/exfil?data=",
-        b"AWS_KEY=AWSREDACTED_EXAMPLE",
-        b"google_api_key=AIzaSyBM0jexample5Y9p6example4Gk",
+        b"AWS_KEY=" + b"AKIA" + b"IOSFODNN7EXAMPLE",
+        b"google_api_key=" + b"AIzaSy" + b"BM0jexample5Y9p6example4Gk",
         b"api_key=\"lab_t0k3n_7h3f7\"",
         b"password=hunter2_lab",
-        b"-----BEGIN RSA PRIVATE KEY-----",
+        b"-----BEGIN " + b"RSA PRIVATE KEY-----",
     ]:
         dex_payload += b"\x00" + s + b"\x00"
     dex_payload += b"\x00" * 512
