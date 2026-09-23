@@ -3,93 +3,69 @@
 > or hold explicit written authorization to assess**. Unauthorized use is
 > prohibited and may be illegal. Read [ETHICS.md](ETHICS.md) and
 > [SCOPE.md](SCOPE.md) before use. Use at your own risk; **AS IS**, no warranty.
+
 # MO1 — Android APK Analyzer
 
-Real APK parser for static mobile security review. Standard-library only.
+Standalone, standard-library-only APK static analyzer for mobile security review: parses the APK container, decodes binary XML manifests by hand, and greps DEX payloads for risky APIs and hardcoded secrets — fully offline.
 
-## What the engine genuinely does
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/5h4d0wn1k/mo1-apk-analyzer.svg)](https://github.com/5h4d0wn1k/mo1-apk-analyzer)
+[![Last commit](https://img.shields.io/github/last-commit/5h4d0wn1k/mo1-apk-analyzer.svg)](https://github.com/5h4d0wn1k/mo1-apk-analyzer)
+[![Issues](https://img.shields.io/github/issues/5h4d0wn1k/mo1-apk-analyzer.svg)](https://github.com/5h4d0wn1k/mo1-apk-analyzer)
 
-- **ZIP/APK container parsing** via `zipfile` — validates archive, lists entries,
-  checks `.testzip()` integrity.
-- **Binary XML (AXML) decode, by hand** — parses the RES_XML_TYPE header and the
-  RES_STRING_POOL_TYPE chunk (UTF-16 and UTF-8 string pools, real offset table) to
-  recover `AndroidManifest.xml` strings without any third-party library.
-- **Permission risk categorization** — dangerous / signature / unknown buckets.
-- **Signature presence** — META-INF entries and APK Signature Scheme v2 markers.
-- **Dangerous API grep** over DEX payload bytes — device-ID, SIM harvesting, SMS,
-  shell exec, accessibility abuse, dynamic class loading, C2-style endpoints.
-- **Hardcoded-secret scan** — AWS keys, Google API keys, GitHub tokens, RSA private
-  blocks, generic password/api_key/secret assignments on DEX+manifest content.
-- **Crafted fixture** — `fixtures/sample_vuln.apk` is a real zipfile with a real
-  binary-XML manifest and a `classes.dex` payload studded with in-band markers.
+## Why
 
-## Quick start
+Static mobile analysis should be reproducible and dependency-free. MO1 performs real APK forensics in pure Python — no Android SDK, no apktool, no third-party imports — so you can inspect permissions, components, signatures, risky API usage, and embedded secrets on any machine, including air-gapped review boxes. Analyze only APKs you own or are explicitly authorized to assess.
+
+## Features
+
+- **ZIP/APK container parsing** via `zipfile` — archive validation, entry listing, `.testzip()` integrity
+- **Hand-written binary XML (AXML) decoder** — parses `RES_XML_TYPE` and `RES_STRING_POOL_TYPE` chunks (UTF-16/UTF-8 pools, real offset tables) to recover `AndroidManifest.xml`
+- **Permission risk categorization** — dangerous / signature / unknown buckets
+- **Signature presence check** — `META-INF` entries and APK Signature Scheme v2 markers
+- **Dangerous API grep over DEX bytes** — device-ID, SIM/IMSI harvesting, SMS, shell exec, accessibility abuse, dynamic class loading, C2-style endpoints
+- **Hardcoded-secret scan** — AWS keys, Google API keys, GitHub tokens, RSA private blocks, generic password/secret assignments
+- **Bundled crafted fixture** — `fixtures/sample_vuln.apk` (real zipfile + binary XML manifest + marked DEX payload)
+
+## Quickstart
 
 ```bash
-# Offline demo (builds/uses the crafted fixture, writes reports/, exits 0)
+# Offline demo (writes reports/, exit 0)
 python3 apk_analyzer.py
 
-# Analyze any APK
+# Analyze any APK you are authorized to inspect
 python3 apk_analyzer.py path/to/app.apk
 
-# JSON report + custom report dir
+# JSON report + custom report directory
 python3 apk_analyzer.py path/to/app.apk --json --report-dir reports
 
 # Rebuild the bundled fixture
 python3 apk_analyzer.py --make-fixture
+```
 
-# Tests
+## Tests
+
+```bash
 python3 -m unittest discover -s tests
 ```
 
-## CLI
+## Project structure
 
-```
-python3 apk_analyzer.py [-h] [--json] [--report-dir REPORT_DIR] [--make-fixture] [apk]
-```
+- `apk_analyzer.py` — parser, AXML decoder, scanners and CLI
+- `fixtures/` — `sample_vuln.apk`, a real crafted analysis target
+- `tests/` — 16 unit tests over the full pipeline
 
-- `apk` — path to an APK. Omitted → offline demo (exit 0).
-- `--json` — write JSON to `reports/<name>.json` (gitignored).
-- `--report-dir` — report output directory (default `reports/`).
-- `--make-fixture` — regenerate the crafted fixture APK and exit.
+## Documentation
 
-Exit codes: `0` success (incl. demo), `2` usage/input error.
+- [ETHICS.md](ETHICS.md) — educational purpose and authorized use only
+- [SCOPE.md](SCOPE.md) — authorized-testing scope checklist
+- [SECURITY.md](SECURITY.md) — vulnerability reporting
+- [CONTRIBUTING.md](CONTRIBUTING.md) — safe contribution guidelines
 
-## Live Lab Test Plan
+## Contributing
 
-Prerequisites: an Android emulator or device you own, and the target `.apk` you
-are authorized to analyze (or this repo's fixture as a stand-in).
-
-1. **Baseline**: `python3 apk_analyzer.py fixtures/sample_vuln.apk --json`
-   — confirm package, 12 permissions we planted, 9 dangerous, 5 secrets.
-2. **Real target**: obtain a signed, debug, or release APK you have rights to;
-   run the same command. Sanity-check that `package`/`signed` match `aapt dump badging`.
-3. **Cross-check AXML**: decode the same `AndroidManifest.xml` with `apktool` or
-   `aapt2 dump xmltree` and compare the permission list against the tool's output.
-4. **Secrets audit**: diff the hardcoded-secret findings against `strings` /
-   `grep -a` output for the same DEX to confirm recall and check false positives.
-5. **Regression**: re-run `python3 -m unittest discover -s tests` after any change
-   to the decoder.
-
-## Metrics
-
-| Metric                                  | Value |
-|-----------------------------------------|-------|
-| Standard-library only                   | Yes   |
-| Third-party deps                        | none  |
-| Deterministic offline tests             | 16    |
-| Fixture APK (real zipfile + AXML)       | `fixtures/sample_vuln.apk` |
-| Offline demo exit                      | 0     |
-| Report output                          | `reports/*.json` (gitignored) |
-| Input formats                           | APK (zipfile), AXML manifest |
-
-## IMPORTANT: Read before use.
-
-Educational, authorization-required tooling. See `LICENSE` for the full shield —
-Authorization, CFAA / computer-crime statutes, Acceptable Use, Prohibited Use,
-No Warranty, and Responsible Disclosure. Only analyze APKs you own or are
-explicitly authorized to assess.
+New risky-API patterns, secret detectors, and fixture improvements are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md); analysis targets must remain fixtures or APKs you own.
 
 ## License
 
-MIT — full legal shield in `LICENSE`.
+MIT — see [LICENSE](LICENSE). Provided **AS IS**, without warranty, for education and authorized mobile security testing only.
